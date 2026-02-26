@@ -1,0 +1,37 @@
+// prisma/schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  // Fitur preview ini wajib diaktifkan untuk menggunakan ekstensi PostgreSQL seperti pgvector
+  previewFeatures = ["postgresqlExtensions"] 
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // Mendeklarasikan ekstensi pgvector
+  extensions = [vector]
+}
+
+// Tabel untuk menyimpan data identitas dan fitur wajah (Registrasi)
+model FaceData {
+  id          Int             @id @default(autoincrement())
+  name        String
+  imagePath   String          // Lokasi file foto disimpan di server
+  // Vektor embedding 128-dimensi dari MobileFaceNet
+  embedding   Unsupported("vector(128)") 
+  createdAt   DateTime        @default(now())
+  
+  // Relasi ke tabel log absensi (Satu wajah bisa punya banyak log absensi)
+  attendances AttendanceLog[]
+}
+
+// Tabel untuk menyimpan riwayat presensi (Log Absensi)
+model AttendanceLog {
+  id              Int      @id @default(autoincrement())
+  faceId          Int      // Foreign key ke tabel FaceData
+  faceData        FaceData @relation(fields: [faceId], references: [id])
+  timestamp       DateTime @default(now())
+  earValue        Float    // Nilai Eye Aspect Ratio saat kedipan terekam
+  similarityScore Float    // Skor jarak/kemiripan vektor saat wajah dikenali
+}
