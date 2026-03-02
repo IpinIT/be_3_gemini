@@ -199,3 +199,85 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
   }
 };
+
+// Endpoint untuk Edit Nama Anggota (UPDATE)
+export const updateFace = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    // PAKSA TYPESCRIPT BACA SEBAGAI STRING MURNI
+    const numericId = parseInt(id as string, 10);
+
+    if (!name) {
+      res.status(400).json({ error: 'Nama baru tidak boleh kosong!' });
+      return;
+    }
+
+    const result: any = await prisma.$queryRaw`
+      UPDATE "FaceData" 
+      SET name = ${name} 
+      WHERE id = ${numericId} 
+      RETURNING id, name, "imagePath";
+    `;
+
+    if (!result || result.length === 0) {
+      res.status(404).json({ error: 'Data anggota tidak ditemukan.' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Nama anggota berhasil diperbarui!',
+      data: result[0]
+    });
+  } catch (error) {
+    console.error('Error saat update wajah:', error);
+    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+  }
+};
+
+// Endpoint untuk Hapus Anggota (DELETE) beserta File Fotonya
+export const deleteFace = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    // PAKSA TYPESCRIPT BACA SEBAGAI STRING MURNI
+    const numericId = parseInt(id as string, 10);
+
+    // 1. Cari data anggota menggunakan numericId
+    const face: any = await prisma.$queryRaw`
+      SELECT id, "imagePath" FROM "FaceData" WHERE id = ${numericId};
+    `;
+
+    if (!face || face.length === 0) {
+      res.status(404).json({ error: 'Data anggota tidak ditemukan.' });
+      return;
+    }
+
+    const imagePath = face[0].imagePath;
+
+    // 2. Hapus log absensi terlebih dahulu (menghindari Foreign Key error)
+    await prisma.attendanceLog.deleteMany({
+      where: { faceId: numericId }
+    });
+
+    // 3. Hapus data anggota
+    await prisma.$executeRaw`
+      DELETE FROM "FaceData" WHERE id = ${numericId};
+    `;
+
+    // 4. Hapus file foto dari server (baris import fs-nya sudah dihapus dari sini)
+    if (fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Data anggota beserta foto fisiknya berhasil dihapus bersih!' 
+    });
+  } catch (error) {
+    console.error('Error saat menghapus wajah:', error);
+    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+  }
+};
