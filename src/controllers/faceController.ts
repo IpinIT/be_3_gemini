@@ -164,38 +164,112 @@ export const getFaces = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// Endpoint untuk mengambil Log Absensi
+// API GET LOGS (Diperbarui dengan Filter Tanggal & Statistik)
 export const getLogs = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Kita menggunakan Prisma Client biasa karena tidak ada urusan dengan pgvector di sini
-    const logs = await prisma.attendanceLog.findMany({
-      orderBy: {
-        timestamp: 'desc' // Urutkan dari absen terbaru ke terlama
-      },
-      include: {
-        faceData: {
-          select: {
-            name: true // Ambil nama anggota dari tabel FaceData yang berelasi
-          }
+    const { startDate, endDate } = req.query;
+    let start: Date; let end: Date;
+
+    if (startDate && endDate) {
+      start = new Date(startDate as string); start.setHours(0, 0, 0, 0);
+      end = new Date(endDate as string); end.setHours(23, 59, 59, 999);
+    } else {
+      const today = new Date();
+      start = new Date(today); start.setHours(0, 0, 0, 0);
+      end = new Date(today); end.setHours(23, 59, 59, 999);
+    }
+
+    // 1. Ambil semua riwayat absen
+    const logs: any[] = await prisma.$queryRaw`
+      SELECT a.id, a."faceId", a.timestamp, a."earValue", a."similarityScore", f.name
+      FROM "AttendanceLog" a JOIN "FaceData" f ON a."faceId" = f.id
+      WHERE a.timestamp >= ${start} AND a.timestamp <= ${end}
+      ORDER BY a.timestamp DESC;
+    `;
+
+    // 2. Ambil SEMUA data anggota terdaftar untuk mencari tahu siapa yang TIDAK hadir
+    const allUsers: any[] = await prisma.$queryRaw`SELECT id, name FROM "FaceData" ORDER BY name ASC;`;
+
+    // 3. Proses Pengelompokan (Drill-Down)
+    const earliestLogs = new Map<number, { time: Date, name: string }>();
+    
+    // Cari jam absen PERTAMA untuk setiap orang di rentang tanggal tersebut
+    logs.forEach(log => {
+      const logDate = new Date(log.timestamp);
+      if (!earliestLogs.has(log.faceId)) {
+        earliestLogs.set(log.faceId, { time: logDate, name: log.name });
+      } else {
+        if (logDate < earliestLogs.get(log.faceId)!.time) {
+          earliestLogs.set(log.faceId, { time: logDate, name: log.name });
         }
       }
     });
 
-    // Merapikan format respons agar mudah dibaca oleh Flutter
-    const formattedLogs = logs.map(log => ({
-      id: log.id,
-      name: log.faceData.name, // Nama langsung dimunculkan di depan
-      timestamp: log.timestamp,
-      earValue: log.earValue,
-      similarityScore: log.similarityScore
-    }));
+    // Siapkan array kosong untuk menyimpan nama-nama
+    const presentList: any[] = [];
+    const lateList: any[] = [];
+    const absentList: any[] = [];
+    
+    // Pisahkan yang Hadir dan Terlambat
+    earliestLogs.forEach((value, faceId) => {
+      const isLate = value.time.getHours() >= 8;
+      const userData = { id: faceId, name: value.name, time: value.time };
+      
+      presentList.push(userData);
+      if (isLate) lateList.push(userData);
+    });
 
+    // Cari yang Absen (Orang yang ada di 'allUsers', tapi tidak ada di 'earliestLogs')
+    allUsers.forEach(user => {
+      if (!earliestLogs.has(user.id)) {
+        absentList.push({ id: user.id, name: user.name });
+      }
+    });
+
+    // 4. Kirim Balikan JSON Super Lengkap
     res.status(200).json({
       success: true,
-      data: formattedLogs
+      summary: {
+        totalRegistered: allUsers.length,
+        totalPresent: presentList.length,
+        totalLate: lateList.length,
+        totalAbsent: absentList.length,
+        // Ini Data Rahasia untuk memunculkan Pop-up di Flutter
+        details: {
+          registered: allUsers,
+          present: presentList,
+          late: lateList,
+          absent: absentList
+        }
+      },
+      period: { start, end },
+      data: logs
     });
   } catch (error) {
-    console.error('Error saat mengambil log absensi:', error);
+    console.error('Error saat mengambil log:', error);
+    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+  }
+};
+
+// API DELETE LOG (Menghapus satu baris histori absensi)
+export const deleteLog = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    
+    // Paksa TypeScript membacanya sebagai teks murni lalu ubah ke Angka
+    const numericId = parseInt(id as string, 10);
+
+    // Hapus log dari database
+    await prisma.$executeRaw`
+      DELETE FROM "AttendanceLog" WHERE id = ${numericId};
+    `;
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Satu baris riwayat absensi berhasil dihapus!' 
+    });
+  } catch (error) {
+    console.error('Error saat menghapus log:', error);
     res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
   }
 };

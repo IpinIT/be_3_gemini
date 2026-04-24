@@ -7,6 +7,7 @@ import {
   getLogs,
   updateFace,
   deleteFace,
+  deleteLog,
 } from "../controllers/faceController";
 import { upload } from "../middleware/upload";
 
@@ -18,10 +19,13 @@ router.post('/recognize', upload.single('image'), recognizeFace);
 
 // Endpoint GET (Mengambil Data)
 router.get('/faces', getFaces);
-router.get('/logs', getLogs);
+router.get('/logs', getLogs); // Ini sekarang sudah versi Super (ada filter & statistik)
 
-// Endpoint PUT & DELETE (Modifikasi Data)
-router.put('/faces/:id', updateFace); // Gunakan :id sebagai parameter dinamis
+// Endpoint PUT & DELETE (Modifikasi Data Master Wajah)
+router.put('/faces/:id', updateFace);
 router.delete('/faces/:id', deleteFace);
+
+// Endpoint DELETE KHUSUS (Modifikasi Data Log Absensi)
+router.delete('/logs/:id', deleteLog);
 
 export default router;
