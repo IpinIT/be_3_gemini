@@ -20,7 +20,7 @@ export const registerFace = async (
 
     const imagePath = file.path;
 
-    // Ekstraksi Vektor Menggunakan AI Asli
+    // Ekstraksi Vektor Menggunakan AI Saat Registrasi
     const embeddingArray = await getFaceEmbedding(imagePath);
 
     if (!embeddingArray) {
@@ -55,33 +55,50 @@ export const registerFace = async (
 };
 
 // Endpoint Pengenalan Wajah & Absensi
-export const recognizeFace = async (req: Request, res: Response): Promise<void> => {
+export const recognizeFace = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const file = req.file;
     // Menerima nilai EAR dari Liveness Detection Flutter
-    const earValue = parseFloat(req.body.earValue); 
+    const earValue = parseFloat(req.body.earValue);
 
     // 1. Validasi Input
     if (!file || isNaN(earValue)) {
       if (file) fs.unlinkSync(file.path); // Hapus foto jika data tidak lengkap
-      res.status(400).json({ error: 'Foto wajah dan nilai EAR wajib dikirim!' });
+      res
+        .status(400)
+        .json({ error: "Foto wajah dan nilai EAR wajib dikirim!" });
       return;
     }
 
     const imagePath = file.path;
 
-    // 2. Ekstraksi Vektor dari Foto Absensi
+    // =========================================================
+    // 2. Ekstraksi Vektor dari Foto Absensi (Waktu Inferensi)
+    // =========================================================
+    console.time("⏱️ Waktu Inferensi ResNet"); // <--- MULAI CATAT WAKTU INFERENSI
+
     const embeddingArray = await getFaceEmbedding(imagePath);
+
+    console.timeEnd("⏱️ Waktu Inferensi ResNet"); // <--- SELESAI CATAT WAKTU INFERENSI
 
     if (!embeddingArray) {
       fs.unlinkSync(imagePath); // Hapus foto karena tidak ada wajah terdeteksi
-      res.status(400).json({ error: 'Wajah tidak terdeteksi pada gambar yang diunggah!' });
+      res
+        .status(400)
+        .json({ error: "Wajah tidak terdeteksi pada gambar yang diunggah!" });
       return;
     }
 
-    const embeddingString = `[${embeddingArray.join(',')}]`;
+    const embeddingString = `[${embeddingArray.join(",")}]`;
 
-    // 3. Pencarian Kemiripan dengan pgvector (Euclidean Distance)
+    // =========================================================
+    // 3. Pencarian Kemiripan dengan pgvector (Waktu Pencarian DB)
+    // =========================================================
+    console.time("🔍 Waktu Pencarian pgvector"); // <--- MULAI CATAT WAKTU DATABASE
+
     // Operator <-> akan menghitung jarak vektor gambar baru dengan semua data di FaceData.
     // LIMIT 1 akan mengambil 1 data yang jaraknya paling dekat (paling mirip).
     const result: any = await prisma.$queryRaw`
@@ -91,18 +108,23 @@ export const recognizeFace = async (req: Request, res: Response): Promise<void> 
       LIMIT 1;
     `;
 
+    console.timeEnd("🔍 Waktu Pencarian pgvector"); // <--- SELESAI CATAT WAKTU DATABASE
+    // =========================================================
+
     if (!result || result.length === 0) {
       fs.unlinkSync(imagePath);
-      res.status(404).json({ error: 'Belum ada data master wajah di database.' });
+      res
+        .status(404)
+        .json({ error: "Belum ada data master wajah di database." });
       return;
     }
 
     const bestMatch = result[0];
-    
+
     // THRESHOLD (Ambang Batas)
     // Nilai 0.5 adalah standar umum yang aman. Jika jarak < 0.5, dianggap orang yang sama.
     // Jika nanti saat sidang skripsi sistem sering salah kenali orang, turunkan nilainya (misal 0.4).
-    const THRESHOLD = 0.5; 
+    const THRESHOLD = 0.5;
 
     // 4. Keputusan Identitas
     if (bestMatch.distance < THRESHOLD) {
@@ -111,42 +133,43 @@ export const recognizeFace = async (req: Request, res: Response): Promise<void> 
         data: {
           faceId: bestMatch.id,
           earValue: earValue,
-          similarityScore: bestMatch.distance, 
-        }
+          similarityScore: bestMatch.distance,
+        },
       });
 
       fs.unlinkSync(imagePath); // Bersihkan file foto absen dari server
-      
+
       res.status(200).json({
         success: true,
         message: `Absensi berhasil! Selamat datang, ${bestMatch.name}.`,
         data: {
           name: bestMatch.name,
           distance: bestMatch.distance,
-          earValue: earValue
-        }
+          earValue: earValue,
+        },
       });
     } else {
       // Wajah Tidak Dikenali (Jarak lebih besar dari Threshold)
       fs.unlinkSync(imagePath); // Bersihkan file
       res.status(401).json({
         success: false,
-        message: 'Wajah tidak dikenali! Identitas tidak cocok dengan database.',
-        distance: bestMatch.distance // Berguna untuk pemantauan error saat skripsi
+        message: "Wajah tidak dikenali! Identitas tidak cocok dengan database.",
+        distance: bestMatch.distance, // Berguna untuk pemantauan error saat skripsi
       });
     }
-
   } catch (error) {
-    console.error('Error saat pengenalan wajah:', error);
+    console.error("Error saat pengenalan wajah:", error);
     if (req.file) fs.unlinkSync(req.file.path); // Keamanan ekstra: hapus file jika terjadi error server
-    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+    res
+      .status(500)
+      .json({ success: false, error: "Terjadi kesalahan pada server" });
   }
 };
 
 // Endpoint untuk mengambil Daftar Wajah (Daftar Anggota)
 export const getFaces = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Kita hanya mengambil id, nama, dan path gambar. 
+    // Kita hanya mengambil id, nama, dan path gambar.
     // Vektor 128-dimensi sengaja TIDAK DIAMBIL agar tidak membuat aplikasi Flutter menjadi lambat.
     const faces = await prisma.$queryRaw`
       SELECT id, name, "imagePath", "createdAt" 
@@ -156,11 +179,13 @@ export const getFaces = async (req: Request, res: Response): Promise<void> => {
 
     res.status(200).json({
       success: true,
-      data: faces
+      data: faces,
     });
   } catch (error) {
-    console.error('Error saat mengambil daftar wajah:', error);
-    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+    console.error("Error saat mengambil daftar wajah:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Terjadi kesalahan pada server" });
   }
 };
 
@@ -168,15 +193,20 @@ export const getFaces = async (req: Request, res: Response): Promise<void> => {
 export const getLogs = async (req: Request, res: Response): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
-    let start: Date; let end: Date;
+    let start: Date;
+    let end: Date;
 
     if (startDate && endDate) {
-      start = new Date(startDate as string); start.setHours(0, 0, 0, 0);
-      end = new Date(endDate as string); end.setHours(23, 59, 59, 999);
+      start = new Date(startDate as string);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
     } else {
       const today = new Date();
-      start = new Date(today); start.setHours(0, 0, 0, 0);
-      end = new Date(today); end.setHours(23, 59, 59, 999);
+      start = new Date(today);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(today);
+      end.setHours(23, 59, 59, 999);
     }
 
     // 1. Ambil semua riwayat absen
@@ -188,13 +218,14 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
     `;
 
     // 2. Ambil SEMUA data anggota terdaftar untuk mencari tahu siapa yang TIDAK hadir
-    const allUsers: any[] = await prisma.$queryRaw`SELECT id, name FROM "FaceData" ORDER BY name ASC;`;
+    const allUsers: any[] =
+      await prisma.$queryRaw`SELECT id, name FROM "FaceData" ORDER BY name ASC;`;
 
     // 3. Proses Pengelompokan (Drill-Down)
-    const earliestLogs = new Map<number, { time: Date, name: string }>();
-    
+    const earliestLogs = new Map<number, { time: Date; name: string }>();
+
     // Cari jam absen PERTAMA untuk setiap orang di rentang tanggal tersebut
-    logs.forEach(log => {
+    logs.forEach((log) => {
       const logDate = new Date(log.timestamp);
       if (!earliestLogs.has(log.faceId)) {
         earliestLogs.set(log.faceId, { time: logDate, name: log.name });
@@ -209,18 +240,18 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
     const presentList: any[] = [];
     const lateList: any[] = [];
     const absentList: any[] = [];
-    
+
     // Pisahkan yang Hadir dan Terlambat
     earliestLogs.forEach((value, faceId) => {
       const isLate = value.time.getHours() >= 8;
       const userData = { id: faceId, name: value.name, time: value.time };
-      
+
       presentList.push(userData);
       if (isLate) lateList.push(userData);
     });
 
     // Cari yang Absen (Orang yang ada di 'allUsers', tapi tidak ada di 'earliestLogs')
-    allUsers.forEach(user => {
+    allUsers.forEach((user) => {
       if (!earliestLogs.has(user.id)) {
         absentList.push({ id: user.id, name: user.name });
       }
@@ -239,15 +270,17 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
           registered: allUsers,
           present: presentList,
           late: lateList,
-          absent: absentList
-        }
+          absent: absentList,
+        },
       },
       period: { start, end },
-      data: logs
+      data: logs,
     });
   } catch (error) {
-    console.error('Error saat mengambil log:', error);
-    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+    console.error("Error saat mengambil log:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Terjadi kesalahan pada server" });
   }
 };
 
@@ -255,7 +288,7 @@ export const getLogs = async (req: Request, res: Response): Promise<void> => {
 export const deleteLog = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    
+
     // Paksa TypeScript membacanya sebagai teks murni lalu ubah ke Angka
     const numericId = parseInt(id as string, 10);
 
@@ -264,18 +297,23 @@ export const deleteLog = async (req: Request, res: Response): Promise<void> => {
       DELETE FROM "AttendanceLog" WHERE id = ${numericId};
     `;
 
-    res.status(200).json({ 
-      success: true, 
-      message: 'Satu baris riwayat absensi berhasil dihapus!' 
+    res.status(200).json({
+      success: true,
+      message: "Satu baris riwayat absensi berhasil dihapus!",
     });
   } catch (error) {
-    console.error('Error saat menghapus log:', error);
-    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+    console.error("Error saat menghapus log:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Terjadi kesalahan pada server" });
   }
 };
 
 // Endpoint untuk Edit Nama Anggota (UPDATE)
-export const updateFace = async (req: Request, res: Response): Promise<void> => {
+export const updateFace = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const { name } = req.body;
@@ -284,7 +322,7 @@ export const updateFace = async (req: Request, res: Response): Promise<void> => 
     const numericId = parseInt(id as string, 10);
 
     if (!name) {
-      res.status(400).json({ error: 'Nama baru tidak boleh kosong!' });
+      res.status(400).json({ error: "Nama baru tidak boleh kosong!" });
       return;
     }
 
@@ -296,23 +334,28 @@ export const updateFace = async (req: Request, res: Response): Promise<void> => 
     `;
 
     if (!result || result.length === 0) {
-      res.status(404).json({ error: 'Data anggota tidak ditemukan.' });
+      res.status(404).json({ error: "Data anggota tidak ditemukan." });
       return;
     }
 
     res.status(200).json({
       success: true,
-      message: 'Nama anggota berhasil diperbarui!',
-      data: result[0]
+      message: "Nama anggota berhasil diperbarui!",
+      data: result[0],
     });
   } catch (error) {
-    console.error('Error saat update wajah:', error);
-    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+    console.error("Error saat update wajah:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Terjadi kesalahan pada server" });
   }
 };
 
 // Endpoint untuk Hapus Anggota (DELETE) beserta File Fotonya
-export const deleteFace = async (req: Request, res: Response): Promise<void> => {
+export const deleteFace = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
 
@@ -325,7 +368,7 @@ export const deleteFace = async (req: Request, res: Response): Promise<void> => 
     `;
 
     if (!face || face.length === 0) {
-      res.status(404).json({ error: 'Data anggota tidak ditemukan.' });
+      res.status(404).json({ error: "Data anggota tidak ditemukan." });
       return;
     }
 
@@ -333,7 +376,7 @@ export const deleteFace = async (req: Request, res: Response): Promise<void> => 
 
     // 2. Hapus log absensi terlebih dahulu (menghindari Foreign Key error)
     await prisma.attendanceLog.deleteMany({
-      where: { faceId: numericId }
+      where: { faceId: numericId },
     });
 
     // 3. Hapus data anggota
@@ -346,12 +389,14 @@ export const deleteFace = async (req: Request, res: Response): Promise<void> => 
       fs.unlinkSync(imagePath);
     }
 
-    res.status(200).json({ 
-      success: true, 
-      message: 'Data anggota beserta foto fisiknya berhasil dihapus bersih!' 
+    res.status(200).json({
+      success: true,
+      message: "Data anggota beserta foto fisiknya berhasil dihapus bersih!",
     });
   } catch (error) {
-    console.error('Error saat menghapus wajah:', error);
-    res.status(500).json({ success: false, error: 'Terjadi kesalahan pada server' });
+    console.error("Error saat menghapus wajah:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Terjadi kesalahan pada server" });
   }
 };
