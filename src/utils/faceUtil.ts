@@ -13,7 +13,7 @@ export const loadFaceModels = async () => {
   await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelsPath);
   await faceapi.nets.faceRecognitionNet.loadFromDisk(modelsPath);
   await faceapi.nets.faceLandmark68Net.loadFromDisk(modelsPath); // Dibutuhkan untuk meluruskan wajah
-  console.log("[AI]: Model Pengenalan Wajah berhasil dimuat!");
+  console.log("[AI]: Face Recognition Model successfully loaded!");
 };
 
 // Fungsi inti untuk membaca gambar dan mengubahnya jadi 128 angka
@@ -37,7 +37,7 @@ export const getFaceEmbedding = async (
     // Mengubah format Float32Array bawaan face-api menjadi Array biasa
     return Array.from(detection.descriptor);
   } catch (error) {
-    console.error("Error saat mengekstrak wajah:", error);
+    console.error("Error during face embedding extraction:", error);
     return null;
   }
 };

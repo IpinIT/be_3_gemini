@@ -20,7 +20,7 @@ app.use("/uploads", express.static("src/uploads")); // Agar foto bisa diakses le
 
 // Cek apakah server berjalan
 app.get("/", (req: Request, res: Response) => {
-  res.send("Server Backend Absensi Wajah Berjalan Lancar!");
+  res.send("The Face Attendance Backend Server is Running Smoothly!");
 });
 
 app.use("/api", faceRoutes);
@@ -28,13 +28,13 @@ app.use("/api", faceRoutes);
 // Konfigurasi Port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`[server]: Server berjalan di http://localhost:${PORT}`);
+  console.log(`[server]: Server is running at http://localhost:${PORT}`);
   // Cek koneksi Database saat server nyala
     try {
         await prisma.$connect();
-        console.log("✅ Berhasil terhubung ke Database Neon (PostgreSQL)");
+        console.log("✅ Successfully connected to Neon (PostgreSQL) Database");
     } catch (error) {
-        console.error("❌ Gagal terhubung ke Database:", error);
+        console.error("❌ Failed to connect to Database:", error);
     }
   // Memuat model AI saat server berjalan
   await loadFaceModels(); 
