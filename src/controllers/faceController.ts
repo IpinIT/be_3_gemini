@@ -132,7 +132,7 @@ export const recognizeFace = async (
     }
 
     const bestMatch = result[0];
-    const THRESHOLD = 0.5; // Ambang batas toleransi kemiripan Euclidean
+    const THRESHOLD = 0.4; // Ambang batas toleransi kemiripan Euclidean
 
     if (bestMatch.distance < THRESHOLD) {
       await prisma.attendanceLog.create({
