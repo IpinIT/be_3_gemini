@@ -1,4 +1,3 @@
-// src/utils/faceUtil.ts
 import * as faceapi from "@vladmandic/face-api";
 import canvas from "canvas";
 import path from "path";
@@ -16,7 +15,7 @@ export const loadFaceModels = async () => {
   console.log("[AI]: Face Recognition Model successfully loaded!");
 };
 
-// Fungsi inti untuk membaca gambar dan mengubahnya jadi 128 angka
+// Fungsi untuk membaca gambar dan mengubahnya jadi 128 angka
 export const getFaceEmbedding = async (
   imagePath: string,
 ): Promise<number[] | null> => {

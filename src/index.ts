@@ -1,16 +1,15 @@
-// src/index.ts
 import express, { Request, Response } from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 import dotenv from "dotenv";
 import faceRoutes from "./routes/faceRoutes";
-import { loadFaceModels } from './utils/faceUtil';
+import { loadFaceModels } from "./utils/faceUtil";
 
 dotenv.config();
 
 // Inisialisasi Express dan Prisma
 const app = express();
-// Menggunakan PrismaClient (sudah versi 6 dari fase 1)
+// Menggunakan PrismaClient untuk berinteraksi dengan database
 export const prisma = new PrismaClient();
 
 // Middleware
@@ -30,12 +29,12 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`[server]: Server is running at http://localhost:${PORT}`);
   // Cek koneksi Database saat server nyala
-    try {
-        await prisma.$connect();
-        console.log("✅ Successfully connected to Neon (PostgreSQL) Database");
-    } catch (error) {
-        console.error("❌ Failed to connect to Database:", error);
-    }
+  try {
+    await prisma.$connect();
+    console.log("✅ Successfully connected to Neon (PostgreSQL) Database");
+  } catch (error) {
+    console.error("❌ Failed to connect to Database:", error);
+  }
   // Memuat model AI saat server berjalan
-  await loadFaceModels(); 
+  await loadFaceModels();
 });

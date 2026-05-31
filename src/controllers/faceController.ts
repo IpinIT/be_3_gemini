@@ -1,12 +1,9 @@
-// src/controllers/faceController.ts
 import { Request, Response } from "express";
 import { prisma } from "../index"; // Mengambil koneksi database dari index.ts
 import { getFaceEmbedding } from "../utils/faceUtil";
 import fs from "fs";
 
-// ============================================================================
 // 1. ENDPOINT REGISTRASI WAJAH
-// ============================================================================
 export const registerFace = async (
   req: Request,
   res: Response,
@@ -34,13 +31,17 @@ export const registerFace = async (
     }
 
     const embeddingString = `[${embeddingArray.join(",")}]`;
-    // =========================================================
+
     // PENGUJIAN 4.2.1.3: INTEGRITAS FORMAT EKSTRAKSI VEKTOR
-    // =========================================================
+
     console.log("\n[TESTING - PENGUJIAN INTEGRITAS VEKTOR (REGISTRASI)]");
-    console.log(`✅ Validasi Panjang Vektor : ${embeddingArray.length} Dimensi`);
+    console.log(
+      `✅ Validasi Panjang Vektor : ${embeddingArray.length} Dimensi`,
+    );
     console.log(`✅ Sampel Vektor (5 awal)  :`, embeddingArray.slice(0, 5));
-    console.log(`✅ Format Data pgvector    : ${embeddingString.substring(0, 55)}...]`);
+    console.log(
+      `✅ Format Data pgvector    : ${embeddingString.substring(0, 55)}...]`,
+    );
     console.log("=========================================================\n");
     // Simpan ke Database menggunakan Raw SQL
     await prisma.$executeRaw`
@@ -62,9 +63,7 @@ export const registerFace = async (
   }
 };
 
-// ============================================================================
 // 2. ENDPOINT PENGENALAN WAJAH & ABSENSI (DENGAN PENGUKURAN WAKTU)
-// ============================================================================
 export const recognizeFace = async (
   req: Request,
   res: Response,
@@ -81,16 +80,10 @@ export const recognizeFace = async (
 
     const imagePath = file.path;
 
-    // ---------------------------------------------------------
     // PENGUJIAN 1: Waktu Inferensi AI (Ekstraksi Vektor)
-    // ---------------------------------------------------------
     console.time("⏱️ ResNet Inference Time"); // Mulai catat waktu
-
     const embeddingArray = await getFaceEmbedding(imagePath);
-
     console.timeEnd("⏱️ ResNet Inference Time"); // Selesai catat & tampilkan di terminal
-    // ---------------------------------------------------------
-
     if (!embeddingArray) {
       fs.unlinkSync(imagePath);
       res
@@ -98,30 +91,17 @@ export const recognizeFace = async (
         .json({ error: "Face not detected in the uploaded image!" });
       return;
     }
-
     const embeddingString = `[${embeddingArray.join(",")}]`;
-    // =========================================================
-    // PENGUJIAN 4.2.1.3: INTEGRITAS FORMAT EKSTRAKSI VEKTOR
-    // =========================================================
-    console.log("\n[TESTING - PENGUJIAN INTEGRITAS VEKTOR (ABSENSI)]");
-    console.log(`✅ Validasi Panjang Vektor : ${embeddingArray.length} Dimensi`);
-    console.log(`✅ Sampel Vektor (5 awal)  :`, embeddingArray.slice(0, 5));
-    console.log(`✅ Format Data pgvector    : ${embeddingString.substring(0, 55)}...]`);
-    console.log("=========================================================\n");
-    // ---------------------------------------------------------
-    // PENGUJIAN 2: Waktu Komputasi Database (Pencarian Vektor)
-    // ---------------------------------------------------------
-    console.time("🔍 pgvector Search Time"); // Mulai catat waktu
 
+    // PENGUJIAN 2: Waktu Komputasi Database (Pencarian Vektor)
+    console.time("🔍 pgvector Search Time"); // Mulai catat waktu
     const result: any = await prisma.$queryRaw`
       SELECT id, name, (embedding <-> ${embeddingString}::vector) as distance
       FROM "FaceData"
       ORDER BY distance ASC
       LIMIT 1;
     `;
-
     console.timeEnd("🔍 pgvector Search Time"); // Selesai catat & tampilkan di terminal
-    // ---------------------------------------------------------
 
     if (!result || result.length === 0) {
       fs.unlinkSync(imagePath);
@@ -171,9 +151,7 @@ export const recognizeFace = async (
   }
 };
 
-// ============================================================================
 // 3. ENDPOINT MANAJEMEN WAJAH (GET, UPDATE, DELETE)
-// ============================================================================
 export const getFaces = async (req: Request, res: Response): Promise<void> => {
   try {
     const faces = await prisma.$queryRaw`
@@ -266,9 +244,7 @@ export const deleteFace = async (
   }
 };
 
-// ============================================================================
 // 4. ENDPOINT MANAJEMEN LOG ABSENSI (GET & DELETE)
-// ============================================================================
 export const getLogs = async (req: Request, res: Response): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
